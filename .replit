@@ -1,2 +1,30 @@
+modules = ["python-3.11", "postgresql-16"]
 [agent]
 expertMode = true
+
+[nix]
+channel = "stable-25_05"
+packages = ["arrow-cpp", "glibcLocales", "libyaml", "pkg-config"]
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "DataFlow xLerate"
+
+[[workflows.workflow]]
+name = "DataFlow xLerate"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pip install pyyaml pandas sqlalchemy psycopg2-binary pymysql && python main.py --config config/example_pipeline.yaml"
+
+[workflows.workflow.metadata]
+outputType = "console"

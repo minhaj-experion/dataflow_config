@@ -1,0 +1,5 @@
+customer_id,company_name,contact_email,phone,created_at
+1,Acme Corp,contact@acme.com,+1-555-0101,2025-08-20 06:47:04.691516
+2,TechStart Inc,hello@techstart.com,+1-555-0102,2025-08-20 06:47:04.691516
+3,Global Solutions,info@globalsol.com,+1-555-0103,2025-08-20 06:47:04.691516
+4,Innovation Labs,team@innovationlabs.com,+1-555-0104,2025-08-20 06:47:04.691516

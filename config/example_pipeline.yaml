@@ -1,0 +1,123 @@
+# DataFlow xLerate Example Pipeline Configuration
+# This example demonstrates JDBC to local file system data movement
+
+globals:
+  env: dev
+  log_level: INFO
+  # Global logging configuration (for future implementation)
+  log:
+    store:
+      type: local
+      path: ./logs
+
+pipeline:
+  pipeline_name: example_sales_pipeline
+  platform:
+    type: local
+  engine:
+    type: python
+    version: "3.8"
+  retry_mode: continue
+  max_retries: 2
+  retry_delay: 5
+
+mappings:
+  # JDBC to CSV example
+  - mapping:
+      mapping_name: users_jdbc_to_csv
+      load_type: full
+      write_mode: overwrite
+      from:
+        store:
+          type: jdbc
+          db_name: ${PGDATABASE}
+          # Connection details will be picked up from environment variables
+          # PGHOST, PGPORT, PGDATABASE, PGUSER, PGPASSWORD
+        data_format:
+          type: jdbc
+        entity:
+          include:
+            - users
+            - customers
+      to:
+        store:
+          type: local
+          path: ./data/csv_output/{entity}.csv
+        data_format:
+          type: csv
+      transformations:
+        - type: cleanup
+          remove_empty_rows: true
+          trim_whitespace: true
+          clean_column_names: true
+        - type: schema_map
+          column_mapping:
+            user_id: id
+            user_name: name
+            user_email: email
+
+  # JDBC to Parquet example
+  - mapping:
+      mapping_name: orders_jdbc_to_parquet
+      load_type: full
+      write_mode: overwrite
+      from:
+        store:
+          type: jdbc
+          db_name: ${PGDATABASE}
+        data_format:
+          type: jdbc
+        entity:
+          include:
+            - orders
+            - order_items
+      to:
+        store:
+          type: local
+          path: ./data/parquet_output/
+        data_format:
+          type: parquet
+      transformations:
+        - type: cleanup
+          remove_empty_rows: true
+          remove_duplicates: false
+        - type: filter
+          conditions:
+            - column: status
+              operator: not_equals
+              value: "cancelled"
+            - column: amount
+              operator: greater_than
+              value: 0
+
+  # CSV to Parquet transformation example
+  - mapping:
+      mapping_name: csv_to_parquet_transform
+      load_type: full
+      write_mode: overwrite
+      from:
+        store:
+          type: local
+          path: ./data/csv_input/
+        data_format:
+          type: csv
+        entity:
+          include:
+            - products
+            - categories
+      to:
+        store:
+          type: local
+          path: ./data/transformed_output/
+        data_format:
+          type: parquet
+      transformations:
+        - type: schema_map
+          selected_columns:
+            - id
+            - name
+            - price
+            - category_id
+          column_mapping:
+            product_name: name
+            product_price: price
