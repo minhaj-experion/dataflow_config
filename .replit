@@ -18,6 +18,10 @@ author = "agent"
 task = "workflow.run"
 args = "DataFlow xLerate"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "DataFlow xLerate Web UI"
+
 [[workflows.workflow]]
 name = "DataFlow xLerate"
 author = "agent"
@@ -28,3 +32,19 @@ args = "pip install pyyaml pandas sqlalchemy psycopg2-binary pymysql && python m
 
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow]]
+name = "DataFlow xLerate Web UI"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python web_ui.py"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[ports]]
+localPort = 5000
+externalPort = 80
