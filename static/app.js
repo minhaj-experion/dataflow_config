@@ -122,8 +122,31 @@ function initializePipelineDiagram() {
 
 // Update visual pipeline diagram
 function updatePipelineDiagram() {
-    if (!cy || !currentConfig.mappings.length) {
+    if (!cy) {
         return;
+    }
+    
+    // If no mappings, show empty state
+    if (!currentConfig.mappings.length) {
+        cy.elements().remove();
+        const container = document.getElementById('pipeline-diagram');
+        const emptyState = container.querySelector('.text-center');
+        if (!emptyState) {
+            container.innerHTML = `
+                <div class="text-center p-5 text-muted">
+                    <i class="fas fa-project-diagram fa-3x mb-3"></i>
+                    <p>Visual pipeline will appear here when you configure mappings</p>
+                </div>
+            `;
+        }
+        return;
+    }
+    
+    // Clear empty state message
+    const container = document.getElementById('pipeline-diagram');
+    const emptyState = container.querySelector('.text-center');
+    if (emptyState) {
+        emptyState.remove();
     }
     
     const elements = [];
@@ -449,12 +472,33 @@ function shouldShowField(field, mappingConfig, context) {
         const resolvedPath = path.replace('<ctx>', context === 'source' ? 'from' : 'to');
         const actualValue = getValueByPath(mappingConfig, resolvedPath);
         
-        if (actualValue !== expectedValue) {
+        // Handle null comparison properly
+        if (expectedValue === null && actualValue !== null) {
+            return false;
+        }
+        if (expectedValue !== null && actualValue !== expectedValue) {
             return false;
         }
     }
     
     return true;
+}
+
+// Evaluate visibility for all fields and update DOM
+function updateFieldVisibility(mappingIndex) {
+    const mapping = currentConfig.mappings[mappingIndex];
+    if (!mapping) return;
+    
+    // Update source store fields
+    renderDynamicFields(mappingIndex, 'source', 'store');
+    renderDynamicFields(mappingIndex, 'source', 'format');
+    
+    // Update target store fields
+    renderDynamicFields(mappingIndex, 'target', 'store');
+    renderDynamicFields(mappingIndex, 'target', 'format');
+    
+    updatePreview();
+    updatePipelineDiagram();
 }
 
 // Get value by dot notation path
@@ -522,52 +566,51 @@ function updateFieldValue(mappingIndex, fieldPath, value, context) {
     
     current[pathArray[pathArray.length - 1]] = value;
     
-    updatePreview();
-    updatePipelineDiagram();
-    
-    // Re-render fields to show/hide conditional fields
-    renderDynamicFields(mappingIndex, context, 'format');
+    // Trigger full field visibility update
+    setTimeout(() => {
+        updateFieldVisibility(mappingIndex);
+    }, 50);
+}
+
+// Debounced update for better performance
+let updateTimeout;
+function debouncedUpdate(mappingIndex) {
+    clearTimeout(updateTimeout);
+    updateTimeout = setTimeout(() => {
+        updateFieldVisibility(mappingIndex);
+    }, 150);
 }
 
 // Update functions
 function updateMappingField(index, field, value) {
     currentConfig.mappings[index].mapping[field] = value;
-    updatePreview();
-    updatePipelineDiagram();
+    debouncedUpdate(index);
 }
 
 function updateSourceStore(index, storeType) {
     currentConfig.mappings[index].mapping.from.store = { type: storeType };
-    renderDynamicFields(index, 'source', 'store');
-    updatePreview();
-    updatePipelineDiagram();
+    debouncedUpdate(index);
 }
 
 function updateTargetStore(index, storeType) {
     currentConfig.mappings[index].mapping.to.store = { type: storeType };
-    renderDynamicFields(index, 'target', 'store');
-    updatePreview();
-    updatePipelineDiagram();
+    debouncedUpdate(index);
 }
 
 function updateSourceFormat(index, format) {
     currentConfig.mappings[index].mapping.from.data_format = { type: format };
-    renderDynamicFields(index, 'source', 'format');
-    updatePreview();
-    updatePipelineDiagram();
+    debouncedUpdate(index);
 }
 
 function updateTargetFormat(index, format) {
     currentConfig.mappings[index].mapping.to.data_format = { type: format };
-    renderDynamicFields(index, 'target', 'format');
-    updatePreview();
-    updatePipelineDiagram();
+    debouncedUpdate(index);
 }
 
 function updateMappingEntities(index, entitiesStr) {
     const entities = entitiesStr.split(',').map(e => e.trim()).filter(e => e);
     currentConfig.mappings[index].mapping.from.entity.include = entities;
-    updatePreview();
+    debouncedUpdate(index);
 }
 
 function addTransformation(mappingIndex) {
@@ -576,15 +619,13 @@ function addTransformation(mappingIndex) {
         type: transformType
     });
     renderTransformations(mappingIndex);
-    updatePreview();
-    updatePipelineDiagram();
+    debouncedUpdate(mappingIndex);
 }
 
 function removeTransformation(mappingIndex, transformIndex) {
     currentConfig.mappings[mappingIndex].mapping.transformations.splice(transformIndex, 1);
     renderTransformations(mappingIndex);
-    updatePreview();
-    updatePipelineDiagram();
+    debouncedUpdate(mappingIndex);
 }
 
 function removeMapping(mappingId, index) {
@@ -592,6 +633,17 @@ function removeMapping(mappingId, index) {
     currentConfig.mappings.splice(index, 1);
     updatePreview();
     updatePipelineDiagram();
+    
+    // Re-index remaining mappings
+    currentConfig.mappings.forEach((mapping, newIndex) => {
+        const mappingElement = document.querySelector(`[id^="mapping-"]`);
+        if (mappingElement) {
+            const title = mappingElement.querySelector('h6');
+            if (title) {
+                title.innerHTML = `<i class="fas fa-exchange-alt"></i> Mapping ${newIndex + 1}`;
+            }
+        }
+    });
 }
 
 // Render transformations
