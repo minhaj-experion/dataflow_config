@@ -31,6 +31,12 @@ function initializePipelineDiagram() {
     try {
         const container = document.getElementById('pipeline-diagram');
         
+        // Wait for libraries to load
+        if (typeof cytoscape === 'undefined') {
+            setTimeout(initializePipelineDiagram, 100);
+            return;
+        }
+        
         cy = cytoscape({
             container: container,
             style: [
@@ -85,16 +91,32 @@ function initializePipelineDiagram() {
                 }
             ],
             layout: {
-                name: 'dagre',
-                rankDir: 'LR',
-                spacingFactor: 1.5,
-                nodeSep: 50,
-                rankSep: 100
+                name: 'breadthfirst',
+                directed: true,
+                padding: 10,
+                spacingFactor: 1.5
             },
             elements: []
         });
+        
+        // Try to register dagre layout if available
+        if (typeof dagre !== 'undefined' && cy.dagre) {
+            cytoscape.use(cy.dagre);
+        }
+        
+        console.log('Pipeline diagram initialized successfully');
+        
     } catch (error) {
         console.error('Error initializing pipeline diagram:', error);
+        // Fallback: Just show a simple message
+        const container = document.getElementById('pipeline-diagram');
+        container.innerHTML = `
+            <div class="text-center p-4 text-muted">
+                <i class="fas fa-exclamation-triangle fa-2x mb-2"></i>
+                <p>Visual pipeline diagram unavailable</p>
+                <small>Using text-based configuration instead</small>
+            </div>
+        `;
     }
 }
 
@@ -199,11 +221,11 @@ function updatePipelineDiagram() {
     cy.elements().remove();
     cy.add(elements);
     cy.layout({ 
-        name: 'dagre', 
-        rankDir: 'LR',
+        name: 'breadthfirst',
+        directed: true,
+        padding: 20,
         spacingFactor: 1.5,
-        nodeSep: 50,
-        rankSep: 100
+        avoidOverlap: true
     }).run();
 }
 
