@@ -1,8 +1,6 @@
-// DataFlow xLerate Configuration Builder JavaScript
-
-let storeTypes = {};
-let dataFormats = {};
-let transformations = {};
+// DataFlow xLerate Configuration Builder with Visual Pipeline
+let uiRegistry = {};
+let cy = null; // Cytoscape instance
 let currentConfig = {
     globals: {},
     pipeline: {},
@@ -11,28 +9,202 @@ let currentConfig = {
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', function() {
-    loadMetadata();
+    loadUIRegistry();
     bindEvents();
     updatePreview();
+    initializePipelineDiagram();
 });
 
-// Load metadata (store types, formats, transformations)
-async function loadMetadata() {
+// Load UI registry with field definitions
+async function loadUIRegistry() {
     try {
-        const [storeResponse, formatResponse, transformResponse] = await Promise.all([
-            fetch('/api/store-types'),
-            fetch('/api/data-formats'),
-            fetch('/api/transformations')
-        ]);
-        
-        storeTypes = await storeResponse.json();
-        dataFormats = await formatResponse.json();
-        transformations = await transformResponse.json();
-        
-        console.log('Metadata loaded successfully');
+        const response = await fetch('/api/ui-registry');
+        uiRegistry = await response.json();
+        console.log('UI Registry loaded:', uiRegistry);
     } catch (error) {
-        console.error('Error loading metadata:', error);
+        console.error('Error loading UI registry:', error);
     }
+}
+
+// Initialize Cytoscape pipeline diagram
+function initializePipelineDiagram() {
+    try {
+        const container = document.getElementById('pipeline-diagram');
+        
+        cy = cytoscape({
+            container: container,
+            style: [
+                {
+                    selector: 'node',
+                    style: {
+                        'background-color': '#007bff',
+                        'label': 'data(label)',
+                        'text-valign': 'center',
+                        'text-halign': 'center',
+                        'color': 'white',
+                        'font-size': '12px',
+                        'width': '120px',
+                        'height': '40px',
+                        'shape': 'roundrectangle',
+                        'text-wrap': 'wrap',
+                        'text-max-width': '100px'
+                    }
+                },
+                {
+                    selector: 'node.store',
+                    style: {
+                        'background-color': '#28a745',
+                        'shape': 'ellipse'
+                    }
+                },
+                {
+                    selector: 'node.format',
+                    style: {
+                        'background-color': '#fd7e14',
+                        'shape': 'rectangle'
+                    }
+                },
+                {
+                    selector: 'node.transformation',
+                    style: {
+                        'background-color': '#6f42c1',
+                        'shape': 'diamond',
+                        'width': '100px',
+                        'height': '60px'
+                    }
+                },
+                {
+                    selector: 'edge',
+                    style: {
+                        'width': 3,
+                        'line-color': '#ccc',
+                        'target-arrow-color': '#ccc',
+                        'target-arrow-shape': 'triangle',
+                        'curve-style': 'bezier'
+                    }
+                }
+            ],
+            layout: {
+                name: 'dagre',
+                rankDir: 'LR',
+                spacingFactor: 1.5,
+                nodeSep: 50,
+                rankSep: 100
+            },
+            elements: []
+        });
+    } catch (error) {
+        console.error('Error initializing pipeline diagram:', error);
+    }
+}
+
+// Update visual pipeline diagram
+function updatePipelineDiagram() {
+    if (!cy || !currentConfig.mappings.length) {
+        return;
+    }
+    
+    const elements = [];
+    let nodeId = 0;
+    
+    currentConfig.mappings.forEach((mappingWrapper, mappingIndex) => {
+        const mapping = mappingWrapper.mapping;
+        const prefix = `m${mappingIndex}_`;
+        
+        // Source store
+        const sourceStoreId = `${prefix}source_store`;
+        elements.push({
+            data: { 
+                id: sourceStoreId, 
+                label: `${mapping.from?.store?.type || 'Store'}`,
+                type: 'store'
+            },
+            classes: 'store'
+        });
+        
+        // Source format
+        const sourceFormatId = `${prefix}source_format`;
+        elements.push({
+            data: { 
+                id: sourceFormatId, 
+                label: `${mapping.from?.data_format?.type || 'Format'}`,
+                type: 'format'
+            },
+            classes: 'format'
+        });
+        
+        // Connect source store to format
+        elements.push({
+            data: { id: `${sourceStoreId}_to_${sourceFormatId}`, source: sourceStoreId, target: sourceFormatId }
+        });
+        
+        let lastNodeId = sourceFormatId;
+        
+        // Transformations
+        if (mapping.transformations && mapping.transformations.length > 0) {
+            mapping.transformations.forEach((transform, transformIndex) => {
+                const transformId = `${prefix}transform_${transformIndex}`;
+                elements.push({
+                    data: { 
+                        id: transformId, 
+                        label: transform.type || 'Transform',
+                        type: 'transformation'
+                    },
+                    classes: 'transformation'
+                });
+                
+                // Connect to transformation
+                elements.push({
+                    data: { id: `${lastNodeId}_to_${transformId}`, source: lastNodeId, target: transformId }
+                });
+                
+                lastNodeId = transformId;
+            });
+        }
+        
+        // Target format
+        const targetFormatId = `${prefix}target_format`;
+        elements.push({
+            data: { 
+                id: targetFormatId, 
+                label: `${mapping.to?.data_format?.type || 'Format'}`,
+                type: 'format'
+            },
+            classes: 'format'
+        });
+        
+        // Connect to target format
+        elements.push({
+            data: { id: `${lastNodeId}_to_${targetFormatId}`, source: lastNodeId, target: targetFormatId }
+        });
+        
+        // Target store
+        const targetStoreId = `${prefix}target_store`;
+        elements.push({
+            data: { 
+                id: targetStoreId, 
+                label: `${mapping.to?.store?.type || 'Store'}`,
+                type: 'store'
+            },
+            classes: 'store'
+        });
+        
+        // Connect format to target store
+        elements.push({
+            data: { id: `${targetFormatId}_to_${targetStoreId}`, source: targetFormatId, target: targetStoreId }
+        });
+    });
+    
+    // Update diagram
+    cy.elements().remove();
+    cy.add(elements);
+    cy.layout({ 
+        name: 'dagre', 
+        rankDir: 'LR',
+        spacingFactor: 1.5,
+        nodeSep: 50,
+        rankSep: 100
+    }).run();
 }
 
 // Bind form events
@@ -69,6 +241,7 @@ function updateConfig() {
     };
     
     updatePreview();
+    updatePipelineDiagram();
 }
 
 // Add new mapping
@@ -95,9 +268,10 @@ function addMapping() {
     currentConfig.mappings.push(mapping);
     renderMapping(mapping, mappingId, currentConfig.mappings.length - 1);
     updatePreview();
+    updatePipelineDiagram();
 }
 
-// Render mapping UI
+// Render mapping UI with dynamic fields
 function renderMapping(mapping, mappingId, index) {
     const container = document.getElementById('mappings-container');
     const mappingDiv = document.createElement('div');
@@ -143,20 +317,22 @@ function renderMapping(mapping, mappingId, index) {
                 <div class="mb-2">
                     <label class="form-label">Store Type</label>
                     <select class="form-select" onchange="updateSourceStore(${index}, this.value)">
-                        ${Object.keys(storeTypes).map(type => 
-                            `<option value="${type}" ${mapping.mapping.from.store.type === type ? 'selected' : ''}>${storeTypes[type].name}</option>`
+                        ${Object.keys(uiRegistry.stores || {}).map(type => 
+                            `<option value="${type}" ${mapping.mapping.from.store.type === type ? 'selected' : ''}>${uiRegistry.stores[type].label}</option>`
                         ).join('')}
                     </select>
                 </div>
+                <div id="source-store-fields-${index}"></div>
+                
                 <div class="mb-2">
                     <label class="form-label">Data Format</label>
                     <select class="form-select" onchange="updateSourceFormat(${index}, this.value)">
-                        ${Object.keys(dataFormats).map(format => 
-                            `<option value="${format}" ${mapping.mapping.from.data_format.type === format ? 'selected' : ''}>${dataFormats[format].name}</option>`
+                        ${Object.keys(uiRegistry.formats || {}).map(format => 
+                            `<option value="${format}" ${mapping.mapping.from.data_format.type === format ? 'selected' : ''}>${uiRegistry.formats[format].label}</option>`
                         ).join('')}
                     </select>
                 </div>
-                <div id="source-fields-${index}"></div>
+                <div id="source-format-fields-${index}"></div>
             </div>
             
             <!-- Target Configuration -->
@@ -165,20 +341,22 @@ function renderMapping(mapping, mappingId, index) {
                 <div class="mb-2">
                     <label class="form-label">Store Type</label>
                     <select class="form-select" onchange="updateTargetStore(${index}, this.value)">
-                        ${Object.keys(storeTypes).map(type => 
-                            `<option value="${type}" ${mapping.mapping.to.store.type === type ? 'selected' : ''}>${storeTypes[type].name}</option>`
+                        ${Object.keys(uiRegistry.stores || {}).map(type => 
+                            `<option value="${type}" ${mapping.mapping.to.store.type === type ? 'selected' : ''}>${uiRegistry.stores[type].label}</option>`
                         ).join('')}
                     </select>
                 </div>
+                <div id="target-store-fields-${index}"></div>
+                
                 <div class="mb-2">
                     <label class="form-label">Data Format</label>
                     <select class="form-select" onchange="updateTargetFormat(${index}, this.value)">
-                        ${Object.keys(dataFormats).map(format => 
-                            `<option value="${format}" ${mapping.mapping.to.data_format.type === format ? 'selected' : ''}>${dataFormats[format].name}</option>`
+                        ${Object.keys(uiRegistry.formats || {}).map(format => 
+                            `<option value="${format}" ${mapping.mapping.to.data_format.type === format ? 'selected' : ''}>${uiRegistry.formats[format].label}</option>`
                         ).join('')}
                     </select>
                 </div>
-                <div id="target-fields-${index}"></div>
+                <div id="target-format-fields-${index}"></div>
             </div>
         </div>
         
@@ -205,45 +383,193 @@ function renderMapping(mapping, mappingId, index) {
     `;
     
     container.appendChild(mappingDiv);
-    renderStoreFields(index, 'source');
-    renderStoreFields(index, 'target');
+    renderDynamicFields(index, 'source', 'store');
+    renderDynamicFields(index, 'source', 'format');
+    renderDynamicFields(index, 'target', 'store');
+    renderDynamicFields(index, 'target', 'format');
     renderTransformations(index);
 }
 
-// Render store-specific fields
-function renderStoreFields(mappingIndex, storeType) {
+// Render dynamic fields based on selections
+function renderDynamicFields(mappingIndex, context, fieldType) {
     const mapping = currentConfig.mappings[mappingIndex];
-    const store = storeType === 'source' ? mapping.mapping.from.store : mapping.mapping.to.store;
-    const container = document.getElementById(`${storeType}-fields-${mappingIndex}`);
+    const contextPath = context === 'source' ? 'from' : 'to';
+    const type = fieldType === 'store' ? mapping.mapping[contextPath].store.type : mapping.mapping[contextPath].data_format.type;
+    const registry = fieldType === 'store' ? uiRegistry.stores : uiRegistry.formats;
+    const containerId = `${context}-${fieldType}-fields-${mappingIndex}`;
+    const container = document.getElementById(containerId);
     
-    if (!storeTypes[store.type]) return;
+    if (!container || !registry || !registry[type]) {
+        return;
+    }
     
-    const fields = storeTypes[store.type].fields;
+    const config = registry[type];
     let html = '';
     
-    fields.forEach(field => {
-        if (field === 'password') {
-            html += `
-                <div class="mb-2">
-                    <label class="form-label">${field.charAt(0).toUpperCase() + field.slice(1)}</label>
-                    <input type="password" class="form-control" placeholder="${field}"
-                           value="${store[field] || ''}"
-                           onchange="updateStoreField(${mappingIndex}, '${storeType}', '${field}', this.value)">
-                </div>
-            `;
-        } else {
-            html += `
-                <div class="mb-2">
-                    <label class="form-label">${field.charAt(0).toUpperCase() + field.slice(1)}</label>
-                    <input type="text" class="form-control" placeholder="${field}"
-                           value="${store[field] || ''}"
-                           onchange="updateStoreField(${mappingIndex}, '${storeType}', '${field}', this.value)">
-                </div>
-            `;
+    config.fields.forEach(field => {
+        if (!shouldShowField(field, mapping.mapping, context)) {
+            return;
         }
+        
+        html += renderField(field, mapping.mapping, mappingIndex, context);
     });
     
     container.innerHTML = html;
+}
+
+// Check if field should be shown based on show_if conditions
+function shouldShowField(field, mappingConfig, context) {
+    if (!field.show_if) {
+        return true;
+    }
+    
+    for (const [path, expectedValue] of Object.entries(field.show_if)) {
+        const resolvedPath = path.replace('<ctx>', context === 'source' ? 'from' : 'to');
+        const actualValue = getValueByPath(mappingConfig, resolvedPath);
+        
+        if (actualValue !== expectedValue) {
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+// Get value by dot notation path
+function getValueByPath(obj, path) {
+    return path.split('.').reduce((current, key) => current && current[key], obj);
+}
+
+// Render individual field
+function renderField(field, mappingConfig, mappingIndex, context) {
+    const value = getValueByPath(mappingConfig, field.path.replace('<ctx>', context === 'source' ? 'from' : 'to')) || field.default || '';
+    
+    let fieldHtml = `<div class="field-group">`;
+    fieldHtml += `<label class="form-label">${field.label}${field.required ? ' *' : ''}</label>`;
+    
+    switch (field.type) {
+        case 'text':
+        case 'number':
+            fieldHtml += `<input type="${field.type}" class="form-control" placeholder="${field.placeholder || ''}" 
+                         value="${value}" onchange="updateFieldValue(${mappingIndex}, '${field.path}', this.value, '${context}')">`;
+            break;
+        case 'secret':
+            fieldHtml += `<input type="password" class="form-control" placeholder="${field.placeholder || ''}" 
+                         value="${value}" onchange="updateFieldValue(${mappingIndex}, '${field.path}', this.value, '${context}')">`;
+            break;
+        case 'select':
+            fieldHtml += `<select class="form-select" onchange="updateFieldValue(${mappingIndex}, '${field.path}', this.value, '${context}')">`;
+            field.options.forEach(option => {
+                fieldHtml += `<option value="${option.value}" ${value === option.value ? 'selected' : ''}>${option.label}</option>`;
+            });
+            fieldHtml += `</select>`;
+            break;
+        case 'boolean':
+            fieldHtml += `<div class="form-check">
+                <input class="form-check-input" type="checkbox" ${value ? 'checked' : ''} 
+                       onchange="updateFieldValue(${mappingIndex}, '${field.path}', this.checked, '${context}')">
+                <label class="form-check-label">${field.label}</label>
+            </div>`;
+            break;
+        case 'code':
+            fieldHtml += `<textarea class="form-control" rows="3" placeholder="${field.placeholder || ''}" 
+                         onchange="updateFieldValue(${mappingIndex}, '${field.path}', this.value, '${context}')">${value}</textarea>`;
+            break;
+    }
+    
+    if (field.help) {
+        fieldHtml += `<div class="field-help">${field.help}</div>`;
+    }
+    
+    fieldHtml += `</div>`;
+    return fieldHtml;
+}
+
+// Update field value in config
+function updateFieldValue(mappingIndex, fieldPath, value, context) {
+    const resolvedPath = fieldPath.replace('<ctx>', context === 'source' ? 'from' : 'to');
+    const pathArray = resolvedPath.split('.');
+    let current = currentConfig.mappings[mappingIndex].mapping;
+    
+    for (let i = 0; i < pathArray.length - 1; i++) {
+        if (!current[pathArray[i]]) {
+            current[pathArray[i]] = {};
+        }
+        current = current[pathArray[i]];
+    }
+    
+    current[pathArray[pathArray.length - 1]] = value;
+    
+    updatePreview();
+    updatePipelineDiagram();
+    
+    // Re-render fields to show/hide conditional fields
+    renderDynamicFields(mappingIndex, context, 'format');
+}
+
+// Update functions
+function updateMappingField(index, field, value) {
+    currentConfig.mappings[index].mapping[field] = value;
+    updatePreview();
+    updatePipelineDiagram();
+}
+
+function updateSourceStore(index, storeType) {
+    currentConfig.mappings[index].mapping.from.store = { type: storeType };
+    renderDynamicFields(index, 'source', 'store');
+    updatePreview();
+    updatePipelineDiagram();
+}
+
+function updateTargetStore(index, storeType) {
+    currentConfig.mappings[index].mapping.to.store = { type: storeType };
+    renderDynamicFields(index, 'target', 'store');
+    updatePreview();
+    updatePipelineDiagram();
+}
+
+function updateSourceFormat(index, format) {
+    currentConfig.mappings[index].mapping.from.data_format = { type: format };
+    renderDynamicFields(index, 'source', 'format');
+    updatePreview();
+    updatePipelineDiagram();
+}
+
+function updateTargetFormat(index, format) {
+    currentConfig.mappings[index].mapping.to.data_format = { type: format };
+    renderDynamicFields(index, 'target', 'format');
+    updatePreview();
+    updatePipelineDiagram();
+}
+
+function updateMappingEntities(index, entitiesStr) {
+    const entities = entitiesStr.split(',').map(e => e.trim()).filter(e => e);
+    currentConfig.mappings[index].mapping.from.entity.include = entities;
+    updatePreview();
+}
+
+function addTransformation(mappingIndex) {
+    const transformType = Object.keys(uiRegistry.transformations || {})[0] || 'cleanup';
+    currentConfig.mappings[mappingIndex].mapping.transformations.push({
+        type: transformType
+    });
+    renderTransformations(mappingIndex);
+    updatePreview();
+    updatePipelineDiagram();
+}
+
+function removeTransformation(mappingIndex, transformIndex) {
+    currentConfig.mappings[mappingIndex].mapping.transformations.splice(transformIndex, 1);
+    renderTransformations(mappingIndex);
+    updatePreview();
+    updatePipelineDiagram();
+}
+
+function removeMapping(mappingId, index) {
+    document.getElementById(`mapping-${mappingId}`).remove();
+    currentConfig.mappings.splice(index, 1);
+    updatePreview();
+    updatePipelineDiagram();
 }
 
 // Render transformations
@@ -258,87 +584,24 @@ function renderTransformations(mappingIndex) {
     
     let html = '';
     mapping.mapping.transformations.forEach((transform, transformIndex) => {
+        const transformConfig = uiRegistry.transformations[transform.type];
         html += `
             <div class="transformation-config mb-2">
                 <div class="d-flex justify-content-between align-items-center mb-2">
-                    <strong>${transformations[transform.type]?.name || transform.type}</strong>
+                    <strong><i class="${transformConfig?.icon || 'fas fa-cog'}"></i> ${transformConfig?.label || transform.type}</strong>
                     <button type="button" class="btn btn-sm btn-outline-danger" 
                             onclick="removeTransformation(${mappingIndex}, ${transformIndex})">
                         <i class="fas fa-trash"></i>
                     </button>
                 </div>
                 <div class="transformation-fields">
-                    <!-- Transformation-specific fields would go here -->
-                    <small class="text-muted">Type: ${transform.type}</small>
+                    <small class="text-muted">${transformConfig?.description || ''}</small>
                 </div>
             </div>
         `;
     });
     
     container.innerHTML = html;
-}
-
-// Update functions
-function updateMappingField(index, field, value) {
-    currentConfig.mappings[index].mapping[field] = value;
-    updatePreview();
-}
-
-function updateSourceStore(index, storeType) {
-    currentConfig.mappings[index].mapping.from.store = { type: storeType };
-    renderStoreFields(index, 'source');
-    updatePreview();
-}
-
-function updateTargetStore(index, storeType) {
-    currentConfig.mappings[index].mapping.to.store = { type: storeType };
-    renderStoreFields(index, 'target');
-    updatePreview();
-}
-
-function updateSourceFormat(index, format) {
-    currentConfig.mappings[index].mapping.from.data_format = { type: format };
-    updatePreview();
-}
-
-function updateTargetFormat(index, format) {
-    currentConfig.mappings[index].mapping.to.data_format = { type: format };
-    updatePreview();
-}
-
-function updateStoreField(mappingIndex, storeType, field, value) {
-    const store = storeType === 'source' 
-        ? currentConfig.mappings[mappingIndex].mapping.from.store 
-        : currentConfig.mappings[mappingIndex].mapping.to.store;
-    store[field] = value;
-    updatePreview();
-}
-
-function updateMappingEntities(index, entitiesStr) {
-    const entities = entitiesStr.split(',').map(e => e.trim()).filter(e => e);
-    currentConfig.mappings[index].mapping.from.entity.include = entities;
-    updatePreview();
-}
-
-function addTransformation(mappingIndex) {
-    const transformType = Object.keys(transformations)[0] || 'cleanup';
-    currentConfig.mappings[mappingIndex].mapping.transformations.push({
-        type: transformType
-    });
-    renderTransformations(mappingIndex);
-    updatePreview();
-}
-
-function removeTransformation(mappingIndex, transformIndex) {
-    currentConfig.mappings[mappingIndex].mapping.transformations.splice(transformIndex, 1);
-    renderTransformations(mappingIndex);
-    updatePreview();
-}
-
-function removeMapping(mappingId, index) {
-    document.getElementById(`mapping-${mappingId}`).remove();
-    currentConfig.mappings.splice(index, 1);
-    updatePreview();
 }
 
 // Update YAML preview
@@ -442,6 +705,7 @@ async function loadYamlFile() {
             currentConfig = result.config;
             loadConfigurationToUI();
             updatePreview();
+            updatePipelineDiagram();
         } else {
             alert('Error loading file: ' + result.error);
         }

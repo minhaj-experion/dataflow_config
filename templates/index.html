@@ -6,6 +6,9 @@
     <title>DataFlow xLerate - Configuration Builder</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
+    <script src="https://unpkg.com/cytoscape@3.26.0/dist/cytoscape.min.js"></script>
+    <script src="https://unpkg.com/cytoscape-dagre@2.5.0/cytoscape-dagre.js"></script>
     <style>
         .config-section {
             background: #f8f9fa;
@@ -38,6 +41,28 @@
             border-radius: 4px;
             padding: 10px;
             margin-top: 10px;
+        }
+        .visual-pipeline {
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            height: 300px;
+            background: #f8f9fa;
+            margin-bottom: 20px;
+        }
+        .dynamic-fields {
+            background: #fff;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 10px;
+        }
+        .field-group {
+            margin-bottom: 15px;
+        }
+        .field-help {
+            font-size: 0.85em;
+            color: #6c757d;
+            margin-top: 3px;
         }
     </style>
 </head>
@@ -145,6 +170,15 @@
                                 <i class="fas fa-plus"></i> Add Mapping
                             </button>
                         </div>
+                        
+                        <!-- Visual Pipeline -->
+                        <div class="visual-pipeline" id="pipeline-diagram">
+                            <div class="text-center p-5 text-muted">
+                                <i class="fas fa-project-diagram fa-3x mb-3"></i>
+                                <p>Visual pipeline will appear here when you configure mappings</p>
+                            </div>
+                        </div>
+                        
                         <div id="mappings-container">
                             <!-- Mappings will be added here dynamically -->
                         </div>
