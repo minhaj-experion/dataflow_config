@@ -369,7 +369,7 @@ function renderMapping(mapping, mappingId, index) {
                 </div>
                 <div id="source-store-fields-${index}"></div>
                 
-                <div class="mb-2">
+                <div class="mb-2" id="source-format-selector-${index}">
                     <label class="form-label">Data Format</label>
                     <select class="form-select" onchange="updateSourceFormat(${index}, this.value)">
                         ${Object.keys(uiRegistry.formats || {}).map(format => 
@@ -393,7 +393,7 @@ function renderMapping(mapping, mappingId, index) {
                 </div>
                 <div id="target-store-fields-${index}"></div>
                 
-                <div class="mb-2">
+                <div class="mb-2" id="target-format-selector-${index}">
                     <label class="form-label">Data Format</label>
                     <select class="form-select" onchange="updateTargetFormat(${index}, this.value)">
                         ${Object.keys(uiRegistry.formats || {}).map(format => 
@@ -428,6 +428,18 @@ function renderMapping(mapping, mappingId, index) {
     `;
     
     container.appendChild(mappingDiv);
+    
+    // Initialize format selector visibility based on store type
+    const sourceFormatSelector = document.getElementById(`source-format-selector-${index}`);
+    if (sourceFormatSelector && mapping.mapping.from.store.type !== 'local') {
+        sourceFormatSelector.style.display = 'none';
+    }
+    
+    const targetFormatSelector = document.getElementById(`target-format-selector-${index}`);
+    if (targetFormatSelector && mapping.mapping.to.store.type !== 'local') {
+        targetFormatSelector.style.display = 'none';
+    }
+    
     renderDynamicFields(index, 'source', 'store');
     renderDynamicFields(index, 'source', 'format');
     renderDynamicFields(index, 'target', 'store');
@@ -589,11 +601,65 @@ function updateMappingField(index, field, value) {
 
 function updateSourceStore(index, storeType) {
     currentConfig.mappings[index].mapping.from.store = { type: storeType };
+    
+    // Update data format based on store type
+    // Only local storage has multiple format options; JDBC and API use their own format
+    if (storeType === 'local') {
+        // Default to CSV for local storage
+        if (!currentConfig.mappings[index].mapping.from.data_format.type || 
+            currentConfig.mappings[index].mapping.from.data_format.type === 'jdbc') {
+            currentConfig.mappings[index].mapping.from.data_format = { type: 'csv' };
+        }
+    } else if (storeType === 'jdbc') {
+        currentConfig.mappings[index].mapping.from.data_format = { type: 'jdbc' };
+    } else if (storeType === 'api') {
+        currentConfig.mappings[index].mapping.from.data_format = { type: 'json' };
+    }
+    
+    // Show/hide format selector based on store type
+    const formatSelector = document.getElementById(`source-format-selector-${index}`);
+    if (formatSelector) {
+        if (storeType === 'local') {
+            formatSelector.style.display = 'block';
+        } else {
+            formatSelector.style.display = 'none';
+        }
+    }
+    
+    renderDynamicFields(index, 'source', 'store');
+    renderDynamicFields(index, 'source', 'format');
     debouncedUpdate(index);
 }
 
 function updateTargetStore(index, storeType) {
     currentConfig.mappings[index].mapping.to.store = { type: storeType };
+    
+    // Update data format based on store type
+    // Only local storage has multiple format options; JDBC and API use their own format
+    if (storeType === 'local') {
+        // Default to CSV for local storage
+        if (!currentConfig.mappings[index].mapping.to.data_format.type || 
+            currentConfig.mappings[index].mapping.to.data_format.type === 'jdbc') {
+            currentConfig.mappings[index].mapping.to.data_format = { type: 'csv' };
+        }
+    } else if (storeType === 'jdbc') {
+        currentConfig.mappings[index].mapping.to.data_format = { type: 'jdbc' };
+    } else if (storeType === 'api') {
+        currentConfig.mappings[index].mapping.to.data_format = { type: 'json' };
+    }
+    
+    // Show/hide format selector based on store type
+    const formatSelector = document.getElementById(`target-format-selector-${index}`);
+    if (formatSelector) {
+        if (storeType === 'local') {
+            formatSelector.style.display = 'block';
+        } else {
+            formatSelector.style.display = 'none';
+        }
+    }
+    
+    renderDynamicFields(index, 'target', 'store');
+    renderDynamicFields(index, 'target', 'format');
     debouncedUpdate(index);
 }
 
